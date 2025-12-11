@@ -1,0 +1,49 @@
+# menu.lst config for boot iso file from grub4dos
+# main bootloader grub2 not use it (use grub.cfg instead)
+
+## Copy (and remove # from) next 7 lines
+
+#title Debian Live
+#set ISO=isoname.iso
+#find --set-root --ignore-floppies --ignore-cd /%ISO%
+#map /%ISO% (0xff)
+#map --hook
+#root (0xff)
+#configfile /boot/grub/menu.lst
+
+## To main menu.lst config for grub4dos
+
+timeout 30
+default 1
+
+title Debian Live
+kernel /live/vmlinuz1 nocd noauto from=/%ISO%
+initrd /live/initrd1.xz
+
+title Debian Live Copy2RAM
+kernel /live/vmlinuz1 nocd noauto copy2ram from=/%ISO%
+initrd /live/initrd1.xz
+
+menuentry Debian Live changes=/llive folder
+linux /live/vmlinuz1 nocd noauto changes=/llive from=/%ISO%
+initrd /live/initrd1.xz
+
+menuentry Debian Live changes=/llive/changes.dat file
+linux /live/vmlinuz1 nocd noauto changes=/llive/changes.dat from=/%ISO%
+initrd /live/initrd1.xz
+
+menuentry Debian Live Copy2RAM changes=EXIT:/llive folder
+linux /live/vmlinuz1 nocd noauto copy2ram changes=EXIT:/llive from=/%ISO%
+initrd /live/initrd1.xz
+
+menuentry "Debian Live Copy2RAM changes=EXIT:/llive/changes.dat file
+linux /live/vmlinuz1 nocd noauto copy2ram changes=EXIT:/llive/changes.dat from=/%ISO%
+initrd /live/initrd1.xz
+
+menuentry Debian Live text (do not run startx)
+linux /live/vmlinuz1 nocd noauto text from=/%ISO%
+initrd /live/initrd1.xz
+
+menuentry Debian Live nomodeset (disable all GPU drivers)
+linux /live/vmlinuz1 nocd noauto nomodeset from=/%ISO%
+initrd /live/initrd1.xz
