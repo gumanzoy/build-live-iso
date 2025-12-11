@@ -1,11 +1,10 @@
 #!/bin/bash
 
-# build script for base filesystem '01-filesystem.squashfs' for PocketHandyBox
-# by gumanzoy https://github.com/PocketHandyBox/phb-base
-# https://forum.puppylinux.com/viewtopic.php?t=13647
+# build script create a Debian minimal live system similar to 'DebianDog'
+# supports only .conf files as an argument, e.g. ./build /path/to/myconfig.conf
 
-# Based on DebianDog Bookworm build script mklive-bookworm by fredx181
-# https://forum.puppylinux.com/viewtopic.php?t=5069
+# Based on https://github.com/DebianDog/build-trixie by fredx181
+# Modified by gumanzoy https://github.com/gumanzoy/build-live-iso
 
 if [ -f "$1" ]; then
 	config="$1"
@@ -37,20 +36,22 @@ if [ ! -d "$DIST" ]; then
 	exit
 fi
 
-echo -e "\e[0;33mBuild base filesystem '01-filesystem.squashfs' for 'PocketHandyBox'\e[0m"
+echo -e "\e[0;33mCreate a Debian $DIST minimal live system similar to 'DebianDog'\nWith overlay support and porteus-boot style included\e[0m"
 echo -e "\e[0;33m\nIt's required to have at least 3 GB free space\nand to run this script on a Linux filesystem, e.g. ext4\e[0m"
 echo -e "\e[0;32mBuilding will be done in:\e[0m $LAUNCHDIR/$DIST"
 
 if [ $(command -v apt-get 2>/dev/null) ]; then
 	#echo -e "\e[0;36mUpdate the package lists...\e[0m"
 	#apt-get update
-	echo -e "\e[0;36mInstall required packages:\e[0m debootstrap squashfs-tools xz-utils zstd"
-	apt-get install debootstrap squashfs-tools xz-utils zstd -y
+	echo -e "\e[0;36mInstall required packages:\e[0m"
+	echo "debootstrap squashfs-tools xz-utils zstd grub-common grub-pc-bin grub-efi-amd64-bin mtools xorriso"
+	apt-get install debootstrap squashfs-tools xz-utils zstd grub-common grub-pc-bin grub-efi-amd64-bin mtools xorriso -y
 fi
 
 if [ -z `which debootstrap` ] || [ ! -e /usr/share/debootstrap/scripts/"$DIST" ]; then
 	echo -e "\e[0;31mFile /usr/share/debootstrap/scripts/$DIST not found, exiting..."
-	echo -e "\e[0;36mPlease install required packages:\e[0m debootstrap (>=1.0.134) squashfs-tools xz-utils zstd"
+	echo -e "\e[0;36mPlease install required packages:\e[0m"
+	echo "debootstrap (>=1.0.134) squashfs-tools xz-utils zstd grub-common grub-pc-bin grub-efi-amd64-bin mtools xorriso"
 	exit
 fi
 
@@ -134,6 +135,22 @@ fi
 export GUESTUSER="$GUESTUSER"
 [ -n "$GUESTPASS" ] && export GUESTPASS="$GUESTPASS"
 [ -n "$LOGINUSER" ] && export LOGINUSER="$LOGINUSER"
+
+[ -z "$LKERNEL" ] && LKERNEL=current
+export LKERNEL="$LKERNEL"
+
+if [ "$BUILDFW" = "TRUE" ]; then
+	if [ -n "`ls $DIST/isodata/live/firmware/fw-*.squashfs 2> /dev/null`" ]; then
+		echo -e "\e[0;32mOK, $DIST/isodata/live/firmware is not empty - skip creating firmware modules\e[0m"
+		export BUILDFW=FALSE
+	else
+		echo -e "\e[0;33mBUILDFW=TRUE - live/firmware/fw-*.squashfs modules will be created\e[0m"
+		export BUILDFW=TRUE
+	fi
+else
+	echo -e "\e[0;33mBUILDFW=FALSE - skip creating firmware modules\e[0m"
+	export BUILDFW=FALSE
+fi
 
 if [ -n "$TEMPMIRROR" ]; then
 	MIRRORURL="http://""$TEMPMIRROR""/debian/"
@@ -335,6 +352,17 @@ fi
 ### Do the real installing
 apt_get install $INSTALL
 
+# Download linux-image package, create initrd1.xz and kernel.kmodsfs module
+echo -e "\e[0;36mCreate initrd1.xz and .kmodsfs module\e[0m"
+/usr/local/sbin/mkkernsfs "$LKERNEL"
+ok_or_failed_chroot
+
+# Download firmware packages and create fw-*.squashfs modules
+if [ "$BUILDFW" = "TRUE" ]; then
+	echo -e "\e[0;36mDownload firmware packages and create fw-*.squashfs modules\e[0m"
+	/usr/local/sbin/mkfwsfs create
+fi
+
 # Uninstall gnome-icon-theme (check for reverse dependencies, remove only if none)
 GNOME_ICON=$(apt-cache rdepends --installed gnome-icon-theme | grep -v "gnome-icon-theme\|Reverse Depends" | grep -v "|")
 [ -z "$GNOME_ICON" ] && apt-get purge --yes gnome-icon-theme    # in case installed
@@ -478,24 +506,9 @@ update-icon-caches usr/share/icons/*/
 # It is need to do after change .desktop files
 update-desktop-database
 
-# Remove /usr/bin/Xtigervnc and extension
-# Needs only in case tigervncserver_1.15.0 package is installed from phb-bookworm repo
-if [ "$DIST" = "bookworm" ]; then
-rm -f usr/bin/Xtigervnc usr/sbin/tigervncsession
-rm -f usr/lib/xorg/modules/extensions/libvnc.so
-remove_broken_links etc/alternatives
-fi
-
 # Replace symlink for mesa-amber i915_dri.so -> i830_dri.so
 [ -f usr/lib/x86_64-linux-gnu/dri/i830_dri.so ] && ln -sf i830_dri.so usr/lib/x86_64-linux-gnu/dri/i915_dri.so
 [ -f usr/lib/i386-linux-gnu/dri/i830_dri.so ] && ln -sf i830_dri.so usr/lib/i386-linux-gnu/dri/i915_dri.so
-
-# Remove mesa libs from 01-filesystem.squashfs
-# Prefer to make module with mesa and libdrm from bookworm-backports
-if [ "$DIST" = "bookworm" ] && [ "$ARCH" = "amd64" ]; then
-rm -f usr/lib/x86_64-linux-gnu/dri/*_dri.so
-rm -f usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0*
-fi
 
 # Enable /etc/fonts/conf.d/10-hinting-full.conf
 [ -f etc/fonts/conf.d/10-hinting-full.conf ] && rm -f etc/fonts/conf.d/10-hinting-slight.conf
@@ -554,32 +567,62 @@ if [ -n "$TEMPMIRROR" ]; then
 	sed -i s/"$TEMPMIRROR"/deb.debian.org/ chroot/etc/apt/sources.list.d/debian.sources
 fi
 
-if [ -n "$LOCALE" ] && [ "$DIST" = "bookworm" ]; then
-	echo "LANG=$LOCALE" > chroot/etc/default/locale
-elif [ -n "$LOCALE" ]; then
+if [ -n "$LOCALE" ]; then
 	echo "LANG=$LOCALE" > chroot/etc/locale.conf
-fi
-
-if [ -n "$LOGO" ]; then
-	sed -i s/phblogo/"$LOGO"/ chroot/etc/rc.local
-	sed -i s/phblogo/"$LOGO"/g chroot/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml
 fi
 
 # Move apt cache away from chroot
 mkdir -p apt/archives
 mv -f chroot/var/cache/apt/archives/*.deb ./apt/archives/
 
-rm -f "$ARCH"/01-filesystem.squashfs # just in case it exists remove first
+rm -f isodata/live/*.kmodsfs isodata/live/01-filesystem.squashfs # just in case it exists remove first
 
-mkdir -p "$ARCH"
-echo -e "\e[0;36mCreating filesystem '01-filesystem.squashfs' . . .\e[0m"
-mksquashfs chroot "$ARCH"/01-filesystem.squashfs -b 512k $MKSFSCMP
+mkdir -p isodata/live/{firmware,modules,optional}
+
+# Move kernel.kmodsfs initrd1.xz and vmlinuz1 to isodata/live/
+mv -f chroot/tmp/linux-image-*/* isodata/live/
+ok_or_failed
+
+if [ "$BUILDFW" = "TRUE" ]; then
+	mv -f chroot/tmp/firmware-*/fw-*.squashfs isodata/live/firmware/
+fi
+
+rm -rf chroot/tmp/*
+
+# Create isodata/live/01-filesystem.squashfs
+echo -e "\e[0;36mCreating isodata/live/01-filesystem.squashfs . . .\e[0m"
+mksquashfs chroot isodata/live/01-filesystem.squashfs -b 512k $MKSFSCMP
 ok_or_failed
 
 # Move back the cache to chroot
 mv -f ./apt/archives/*.deb chroot/var/cache/apt/archives/ 2> /dev/null
 rm -rf apt 2> /dev/null
 
-echo -e "\e[0;32mFinished! If all went well, '01-filesystem.squashfs' file are in ""$ARCH"" folder \n\nHave a good day!\e[0m"
+echo -e "\e[0;36mFinally creating ISO...\e[0m"
+
+date=`date -Idate`
+
+ISONAME="DebLive_${DIST}_${DE_CONFIG}_${ARCH}_${date}_vtgrub2.iso"
+
+rm -f "$ISONAME" # just in case it exists remove first
+
+cp -rf rootcopy/boot isodata/
+ok_or_failed
+
+sed -i "s/isoname.iso/$ISONAME/" isodata/boot/grub/grub.cfg
+sed -i "s/isoname.iso/$ISONAME/" isodata/boot/grub/menu.lst
+
+BUILDISO="#!/bin/sh
+# https://github.com/gumanzoy/build-live-iso
+# sudo apt-get install -y grub-common grub-pc-bin grub-efi-amd64-bin mtools xorriso
+grub-mkrescue --locales= -volid DebLive_${DIST} -o DebLive_${DIST}_${DE_CONFIG}_${ARCH}_vtgrub2.iso ./"
+
+echo "$BUILDISO" > isodata/buildiso && chmod +x isodata/buildiso
+
+grub-mkrescue --locales= -volid DebLive_${DIST} -o "$ISONAME" isodata
+ok_or_failed
+
+echo -e "\e[0;32mFinished! If all went well, $DIST/$ISONAME has been created."
+echo -e "Also the required files for a frugal install are in $DIST/isodata/live folder \n\nHave a good day!\e[0m"
 
 exit 0
