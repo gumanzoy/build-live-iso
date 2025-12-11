@@ -34,7 +34,7 @@ KERNEL=`uname -r`
 FOLDER=`value folder`
 if [ -z "$FOLDER" ]; then FOLDER=live
 CMDIR=live
-[ `uname -m` = i686 ] && FOLDER=live32
+#[ `uname -m` = i686 ] && FOLDER=live32
 else CMDIR=$FOLDER
 fi
 
@@ -106,8 +106,8 @@ fstab
 
 debug
 
-# Searching for PHB data
-echo "${i}searching for PHB data: $FOLDER folder"
+# Searching for live folder
+echo "${i}searching for $FOLDER folder"
 if [ $IP ]; then BOOTDEV=network; DATADEV=/mnt/nfs
     mkdir -p /mnt/nfs/storage
     modprobe -q nfsv4; mount -t nfs4 $IP:$NFSPATH /mnt/nfs -o ro,nolock 2>/dev/null || { modprobe -q nfsv3; mount -t nfs $IP:$NFSPATH /mnt/nfs -o ro,nolock 2>/dev/null; }
@@ -233,15 +233,15 @@ fi
 find $DATADIR/modules -name "*.squashfs" 2>/dev/null | egrep -ve "$NOLOAD" | sort >>/tmp/modules
 find $DATADIR/optional -name "*.squashfs" 2>/dev/null | egrep -e "$LOAD" | sort >>/tmp/modules
 
-# Find /phb/modules or /phb/modules32
-if [ `uname -m` = i686 ]; then search -d /phb/modules32 && PHBMOD=modules32
-	echo "${i}searching for additional modules in /phb/modules32"
-elif [ "$FOLDER" != phb ]; then search -d /phb/modules && PHBMOD=modules
-	echo "${i}searching for additional modules in /phb/modules"
+# Find /llive/modules or /llive/modules32
+if [ `uname -m` = i686 ]; then search -d /llive/modules32 && LIVEMOD=modules32
+	echo "${i}searching for additional modules in /llive/modules32"
+elif [ "$FOLDER" != llive ]; then search -d /llive/modules && LIVEMOD=modules
+	echo "${i}searching for additional modules in /llive/modules"
 fi
-if [ "$PHBMOD" ]; then
-	find /mnt/$DEV/phb/$PHBMOD -name "*.squashfs" 2>/dev/null | egrep -ve "$NOLOAD" | sort >>/tmp/modules
-	find /mnt/$DEV/phb/$PHBMOD -name "*.kmodsfs" 2>/dev/null | egrep -ve "$NOLOAD" | grep $KERNEL | sort >>/tmp/modules
+if [ "$LIVEMOD" ]; then
+	find /mnt/$DEV/llive/$LIVEMOD -name "*.squashfs" 2>/dev/null | egrep -ve "$NOLOAD" | sort >>/tmp/modules
+	find /mnt/$DEV/llive/$LIVEMOD -name "*.kmodsfs" 2>/dev/null | egrep -ve "$NOLOAD" | grep $KERNEL | sort >>/tmp/modules
 fi
 
 # Find extra modules
@@ -283,10 +283,10 @@ elif [ $ROOTCOPY ] && locate -d $ROOTCOPY ; then
 elif [ $ROOTCOPY ]; then
 	fail $ROOTCOPY
 	ROOTCOPY=none
-elif search -d /phb/rootcopy ; then
-	ROOTCOPY=/phb/rootcopy
-	echo "${i}copying content of /mnt/$DEV/phb/rootcopy directory"
-	cp -af /mnt/$DEV/phb/rootcopy/. /union/. 2>/dev/null
+elif search -d /llive/rootcopy ; then
+	ROOTCOPY=/llive/rootcopy
+	echo "${i}copying content of /mnt/$DEV/llive/rootcopy directory"
+	cp -af /mnt/$DEV/llive/rootcopy/. /union/. 2>/dev/null
 else
 	ROOTCOPY=none
 	echo "${i}copying content of $DATADIR/rootcopy directory"

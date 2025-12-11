@@ -1,0 +1,9 @@
+Package: xfdesktop4*
+Pin: origin github.com
+Pin: release l=PocketHandyBox
+Pin-Priority: -1
+
+Package: *
+Pin: origin github.com
+Pin: release l=PocketHandyBox
+Pin-Priority: 500

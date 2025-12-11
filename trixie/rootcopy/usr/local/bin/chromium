@@ -9,7 +9,7 @@
 APPNAME=chromium
 LIBDIR=/usr/lib/$APPNAME
 
-[ -x $LIBDIR/$APPNAME ] || exec netsurf-gtk "$@"
+[ -x $LIBDIR/$APPNAME ] || exec firefox "$@"
 
 if [ $(id -u) -eq 0 ]; then
   which run-as-user > /dev/null && exec run-as-user ${0} "$@"
