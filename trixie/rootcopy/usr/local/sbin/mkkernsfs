@@ -1,0 +1,101 @@
+#!/bin/dash
+
+# mkkernsfs script download linux-image package and create .kmodsfs module
+# by gumanzoy https://github.com/gumanzoy/build-live-iso
+
+echo "# mkkernsfs script download linux-image package and create .kmodsfs module"
+
+if [ -z "$1" ]; then
+echo "Usage:
+mkfwsfs list
+mkfwsfs current
+mkfwsfs latest
+mkfwsfs version"
+exit
+fi
+
+if [ "`whoami`" != "root" ]; then
+echo "This script should be run as root"
+exit 1
+fi
+
+if [ -z "$ARCH" ] && [ "`uname -m`" = "x86_64" ]; then ARCH="amd64"
+elif [ -z "$ARCH" ] && [ "`uname -m`" = "i686" ]; then ARCH="686-pae"
+elif [ "$ARCH" = "i386" ]; then ARCH="686-pae"
+fi
+
+if [ ! -f /var/cache/apt/pkgcache.bin ]; then
+apt-get update
+fi
+
+if [ "$1" = "list" ]; then
+apt-cache -n search linux-image | cut -d' ' -f1 | grep "$ARCH" | grep -v linux-image-"$ARCH" | \
+egrep -ve "-dbg|-cloud|-template|-unsigned|-rt" | sed 's/linux-image-//g' | sort
+exit
+fi
+
+if [ "$1" = "current" ]; then
+    kernel="`apt-cache --no-all-versions show linux-image-$ARCH | grep 'Depends:' | cut -d' ' -f2 | sed 's/linux-image-//g'`"
+elif [ "$1" = "latest" ]; then
+    kernel="`apt-cache show linux-image-$ARCH | grep 'Depends:' | head -1 | cut -d' ' -f2 | sed 's/linux-image-//g'`"
+elif [ -n "$1" ]; then
+    kernel="$1"
+    echo "kernel=$1"
+    apt-cache show linux-image-"$kernel" > /dev/null || exit 1
+fi
+
+if [ -d "/lib/modules/$kernel" ]; then
+    echo "/lib/modules/$kernel - already installed, exit"
+    exit 1
+fi
+
+if [ -d "/tmp/linux-image-$kernel" ]; then
+    echo "/tmp/linux-image-$kernel - already created, exit"
+    exit 1
+fi
+
+mkdir -p /tmp/linux-image-"$kernel"/deb && cd /tmp/linux-image-"$kernel"
+
+DEBFILE="`apt-cache --no-all-versions show linux-image-$kernel | grep 'Filename:' | cut -d' ' -f2`"
+DEBFILE=`basename "$DEBFILE"`
+
+if [ ! -f /var/cache/apt/archives/"$DEBFILE" ]; then
+    apt-get download linux-image-"$kernel" 2> /dev/null
+    mv -f "$DEBFILE" /var/cache/apt/archives/
+fi
+
+echo "Extracting kernel package . . . this may take a while"
+dpkg-deb --extract /var/cache/apt/archives/"$DEBFILE" deb/
+
+mkdir -p /usr/lib/modules/"$kernel"
+if [ -d "deb/lib/modules/$kernel" ]; then
+mv -f deb/lib/modules/"$kernel" /usr/lib/modules/
+else mv -f deb/usr/lib/modules/"$kernel" /usr/lib/modules/
+fi
+
+mv -f deb/boot/vmlinuz-"$kernel" vmlinuz1
+mkdir -p "$kernel"/usr/lib/modules "$kernel"/boot
+mv -f deb/boot/config-"$kernel" "$kernel"/boot/
+rm -rf deb
+
+find /usr/lib/modules/"$kernel" -name "*.ko.gz" -exec gunzip {} \;
+find /usr/lib/modules/"$kernel" -name "*.ko.xz" -exec xz -d {} \;
+find /usr/lib/modules/"$kernel" -name "*.ko.zst" -exec zstd -d {} \;
+
+depmod "$kernel"
+
+/usr/local/sbin/mkinitrd "$kernel"
+ret=$?
+
+if [ $ret -ne 0 ]; then
+    rm -rf /usr/lib/modules/"$kernel"
+    exit $ret
+fi
+
+mv -f /usr/lib/modules/"$kernel" "$kernel"/usr/lib/modules/
+
+echo "Creating /tmp/linux-image-$kernel/$kernel.kmodsfs . . ."
+mksquashfs "$kernel" "$kernel".kmodsfs -b 512k -comp xz -Xbcj x86
+ret=$?
+rm -rf "$kernel"
+exit $ret
