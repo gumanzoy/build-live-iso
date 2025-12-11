@@ -69,7 +69,7 @@
       </description>
     </key>
     <key name='show-hidden' type='b'>
-      <default>true</default>
+      <default>false</default>
       <summary>Show hidden files</summary>
       <description>
 	Controls whether the file chooser shows hidden files or not.
