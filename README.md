@@ -7,6 +7,8 @@ Forum threads
 For Debian 13 "Trixie"
 
 ```
+git clone https://github.com/gumanzoy/build-live-iso.git
+cd build-live-iso
 sudo bash
 ./build trixie-xfce.conf
 ```
