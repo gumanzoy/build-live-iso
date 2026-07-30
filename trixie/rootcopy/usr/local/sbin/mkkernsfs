@@ -28,6 +28,21 @@ if [ ! -f /var/cache/apt/pkgcache.bin ]; then
 apt-get update
 fi
 
+deb_download_and_extract() {
+DEBFILE="`apt-cache --no-all-versions show $PKGNAME-$kernel | grep 'Filename:' | cut -d' ' -f2`"
+DEBFILE=`basename "$DEBFILE"`
+
+if [ ! -f /var/cache/apt/archives/"$DEBFILE" ]; then
+    apt-get download "$PKGNAME"-"$kernel" 2> /dev/null
+    mv -f "$DEBFILE" /var/cache/apt/archives/
+fi
+
+if [ "$PKGNAME" = linux-image -o "$PKGNAME" = linux-modules ]; then
+    echo "Extracting kernel package . . . this may take a while"
+fi
+dpkg-deb --extract /var/cache/apt/archives/"$DEBFILE" deb/
+}
+
 if [ "$1" = "list" ]; then
 apt-cache -n search linux-image | cut -d' ' -f1 | grep "$ARCH" | grep -v linux-image-"$ARCH" | \
 egrep -ve "-dbg|-cloud|-template|-unsigned|-rt" | sed 's/linux-image-//g' | sort
@@ -35,9 +50,9 @@ exit
 fi
 
 if [ "$1" = "current" ]; then
-    kernel="`apt-cache --no-all-versions show linux-image-$ARCH | grep 'Depends:' | cut -d' ' -f2 | sed 's/linux-image-//g'`"
+    kernel="`apt-cache --no-all-versions show linux-image-$ARCH | grep 'Depends:' | cut -d, -f2 | cut -d' ' -f2 | sed 's/linux-image-//g'`"
 elif [ "$1" = "latest" ]; then
-    kernel="`apt-cache show linux-image-$ARCH | grep 'Depends:' | head -1 | cut -d' ' -f2 | sed 's/linux-image-//g'`"
+    kernel="`apt-cache show linux-image-$ARCH | grep 'Depends:' | head -1 | cut -d, -f2 | cut -d' ' -f2 | sed 's/linux-image-//g'`"
 elif [ -n "$1" ]; then
     kernel="$1"
     echo "kernel=$1"
@@ -56,16 +71,14 @@ fi
 
 mkdir -p /tmp/linux-image-"$kernel"/deb && cd /tmp/linux-image-"$kernel"
 
-DEBFILE="`apt-cache --no-all-versions show linux-image-$kernel | grep 'Filename:' | cut -d' ' -f2`"
-DEBFILE=`basename "$DEBFILE"`
-
-if [ ! -f /var/cache/apt/archives/"$DEBFILE" ]; then
-    apt-get download linux-image-"$kernel" 2> /dev/null
-    mv -f "$DEBFILE" /var/cache/apt/archives/
+if [ -n "`apt-cache show linux-base-"$kernel" 2> /dev/null`" ]; then
+    for PKGNAME in linux-base linux-binary linux-modules
+        do deb_download_and_extract
+    done
+else
+    PKGNAME=linux-image
+    deb_download_and_extract
 fi
-
-echo "Extracting kernel package . . . this may take a while"
-dpkg-deb --extract /var/cache/apt/archives/"$DEBFILE" deb/
 
 mkdir -p /usr/lib/modules/"$kernel"
 if [ -d "deb/lib/modules/$kernel" ]; then
