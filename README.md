@@ -12,3 +12,8 @@ cd build-live-iso
 sudo bash
 ./build trixie-xfce.conf
 ```
+
+Use mirror for download deb packages at build time
+```
+TEMPMIRROR=mirror.yandex.ru ./build trixie-xfce.conf
+```
