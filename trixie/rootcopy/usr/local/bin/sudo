@@ -38,4 +38,8 @@ elif [ -z `which pkexec` ]; then
 	exit 1
 fi
 
+if [ "$XDG_SESSION_TYPE" = "wayland" ] ;then
+	exec pkexec --keep-cwd env HOME="$HOME" WAYLAND_DISPLAY="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" XDG_RUNTIME_DIR=/run/user/0 $@
+fi
+
 exec pkexec --keep-cwd env DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" $@

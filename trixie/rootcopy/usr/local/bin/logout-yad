@@ -51,7 +51,11 @@ fi
 umount -l /mnt/live/memory/images/changes-exit 2> /dev/null
 }
 
-if [ "$1" = reboot ]; then
+if [ "$1" = logout ] && [ "$WAYLAND_DISPLAY" ]; then
+[ -x /usr/bin/xfce4-session-logout ] && exec /usr/bin/xfce4-session-logout -l
+elif [ "$1" = logout ]; then
+pkill X
+elif [ "$1" = reboot ]; then
 save_session_fn
 reboot
 elif [ "$1" = poweroff ]; then
@@ -64,11 +68,11 @@ elif [ -f /mnt/live/etc/nochanges ] && [ ! -f /tmp/savefile.txt ]; then
 yad --title Logout --window-icon=system-shutdown --timeout=30 --borders=10 \
  --sticky --fixed --center --on-top --skip-taskbar --close-on-unfocus --form --columns=2 \
  --field='Create savefile!:BTN' makepfile --field='Do you want to save your changes in a savefile?:LBL' \
- --button=Exit\ X\!system-logout:'pkill X' --button=Restart\!system-reboot:'logout-yad reboot' \
+ --button=Logout\!system-logout:'logout-yad logout' --button=Restart\!system-reboot:'logout-yad reboot' \
  --button=Shutdown\!system-shutdown:'logout-yad poweroff' --button=Suspend\!system-suspend:'logout-yad suspend'
 else
 yad --title Logout --window-icon=system-shutdown --timeout=30 --borders=10 \
  --sticky --fixed --center --on-top --skip-taskbar --close-on-unfocus \
- --button=Exit\ X\!system-logout:'pkill X' --button=Restart\!system-reboot:'logout-yad reboot' \
+ --button=Logout\!system-logout:'logout-yad logout' --button=Restart\!system-reboot:'logout-yad reboot' \
  --button=Shutdown\!system-shutdown:'logout-yad poweroff' --button=Suspend\!system-suspend:'logout-yad suspend'
 fi
