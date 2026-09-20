@@ -80,15 +80,20 @@ else
     deb_download_and_extract
 fi
 
+if [ -f "deb/boot/vmlinuz-$kernel" ]; then
+    mv -f deb/boot/vmlinuz-"$kernel" vmlinuz1
+    mkdir -p "$kernel"/boot
+    mv -f deb/boot/config-"$kernel" "$kernel"/boot/
+else
+    mv -f deb/usr/lib/modules/"$kernel"/vmlinuz vmlinuz1
+fi
+
 mkdir -p /usr/lib/modules/"$kernel"
 if [ -d "deb/lib/modules/$kernel" ]; then
 mv -f deb/lib/modules/"$kernel" /usr/lib/modules/
 else mv -f deb/usr/lib/modules/"$kernel" /usr/lib/modules/
 fi
 
-mv -f deb/boot/vmlinuz-"$kernel" vmlinuz1
-mkdir -p "$kernel"/usr/lib/modules "$kernel"/boot
-mv -f deb/boot/config-"$kernel" "$kernel"/boot/
 rm -rf deb
 
 find /usr/lib/modules/"$kernel" -name "*.ko.gz" -exec gunzip {} \;
@@ -105,6 +110,7 @@ if [ $ret -ne 0 ]; then
     exit $ret
 fi
 
+mkdir -p "$kernel"/usr/lib/modules
 mv -f /usr/lib/modules/"$kernel" "$kernel"/usr/lib/modules/
 
 echo "Creating /tmp/linux-image-$kernel/$kernel.kmodsfs . . ."
