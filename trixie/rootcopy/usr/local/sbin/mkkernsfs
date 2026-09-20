@@ -96,9 +96,14 @@ fi
 
 rm -rf deb
 
-find /usr/lib/modules/"$kernel" -name "*.ko.gz" -exec gunzip {} \;
-find /usr/lib/modules/"$kernel" -name "*.ko.xz" -exec xz -d {} \;
-find /usr/lib/modules/"$kernel" -name "*.ko.zst" -exec zstd -d {} \;
+grep -sq ^KEEPKOXZ= /root/*.conf && \
+KEEPKOXZ=`grep ^KEEPKOXZ= /root/*.conf | head -1 | cut -d= -f2 | sed s/\"//g`
+
+if [ "$KEEPKOXZ" != TRUE ]; then
+    find /usr/lib/modules/"$kernel" -name "*.ko.gz" -exec gunzip {} \;
+    find /usr/lib/modules/"$kernel" -name "*.ko.xz" -exec xz -d {} \;
+    find /usr/lib/modules/"$kernel" -name "*.ko.zst" -exec zstd -d {} \;
+fi
 
 depmod "$kernel"
 
@@ -114,7 +119,11 @@ mkdir -p "$kernel"/usr/lib/modules
 mv -f /usr/lib/modules/"$kernel" "$kernel"/usr/lib/modules/
 
 echo "Creating /tmp/linux-image-$kernel/$kernel.kmodsfs . . ."
-mksquashfs "$kernel" "$kernel".kmodsfs -b 512k -comp xz -Xbcj x86
+if [ "$KEEPKOXZ" = TRUE ]; then
+    mksquashfs "$kernel" "$kernel".kmodsfs -b 512k -comp xz -no-fragments -action "uncompressed @ ( name(*.gz) || name(*.xz) || name(*.zst) )"
+else
+    mksquashfs "$kernel" "$kernel".kmodsfs -b 512k -comp xz -Xbcj x86
+fi
 ret=$?
 rm -rf "$kernel"
 exit $ret
