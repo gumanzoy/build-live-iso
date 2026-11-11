@@ -1,4 +1,4 @@
-Create a Debian minimal live system similar to 'DebianDog'
+build-live-iso Debian/Devuan based minimal live system builder similar to DogLinux
 
 Forum threads  
 [EN] [forum.puppylinux.com](https://forum.puppylinux.com/viewtopic.php?t=16091)  

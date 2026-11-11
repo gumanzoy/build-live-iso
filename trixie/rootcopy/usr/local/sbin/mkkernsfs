@@ -1,4 +1,4 @@
-#!/bin/dash
+#!/bin/sh
 
 # mkkernsfs script download linux-image package and create .kmodsfs module
 # by gumanzoy https://github.com/gumanzoy/build-live-iso
