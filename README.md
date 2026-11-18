@@ -2,7 +2,7 @@ build-live-iso Debian/Devuan based minimal live system builder similar to DogLin
 
 Forum threads  
 [EN] [forum.puppylinux.com](https://forum.puppylinux.com/viewtopic.php?t=16091)  
-[RU] [forum.puppyrus.org](https://forum.puppyrus.org/index.php?topic=23789.msg191192#msg191192)
+[RU] [forum.puppyrus.org](https://forum.puppyrus.org/index.php?topic=24560.0)
 
 For Debian 13 "Trixie"
 
