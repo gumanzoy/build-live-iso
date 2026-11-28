@@ -1,0 +1,207 @@
+#!/bin/sh
+
+# pmplug script
+# by gumanzoy https://github.com/PocketHandyBox
+
+if [ "`whoami`" != "root" ]; then
+	which pkexec > /dev/null && exec pkexec ${0} "$@"
+	which sudo > /dev/null && exec sudo ${0} "$@"
+	echo "This script should be run as root"
+	exit 1
+fi
+
+mount_squashfs() {
+MODPTH="`realpath -e "$1"`"
+MODNAME="`basename "${1%.*}" | tr -d ' '`" # remove extension .squashfs
+
+mountpoint -q "$PIMGSDIR/$MODNAME" && return 0
+mkdir -p "$PIMGSDIR/$MODNAME"
+mount -o loop "$MODPTH" "$PIMGSDIR/$MODNAME"
+ret=$?
+[ $ret -eq 0 ] && return 0
+rmdir "$PIMGSDIR/$MODNAME"
+return $ret
+}
+
+unmount_overlay() {
+for LST in pmp.file.bind pmp.overfile.bind pmp.newdir.bind pmp.dir.bind
+do
+	[ -f "$PMPCHNDIR/$LST" ] || continue
+	tac "$PMPCHNDIR/$LST" | while IFS= read -r LINE; do
+		[ -z "$LINE" ] && continue
+		if mountpoint -q "$LINE"; then
+			umount "$LINE" 2>/dev/null || { sync; umount -l "$LINE"; }
+		fi
+		if [ "$LST" = "pmp.file.bind" ]; then
+			mountpoint -q "$LINE" || rm -f "$LINE"
+		elif [ "$LST" = "pmp.newdir.bind" ]; then
+			mountpoint -q "$LINE" || rmdir "$LINE" 2> /dev/null
+		fi
+	done
+	rm -f "$PMPCHNDIR/$LST"
+done
+
+if [ -f "$PMPCHNDIR"/pmp.newlink ]; then
+	xargs -r rm -f < "$PMPCHNDIR"/pmp.newlink
+	rm -f "$PMPCHNDIR"/pmp.newlink
+fi
+
+for MNT in /etc /opt "$PMPCHNDIR/usr"; do
+	if mountpoint -q "$MNT"; then
+		umount "$MNT" 2> /dev/null || { sync; umount -l "$MNT"; }
+	fi
+done
+sync
+if [ -d "$PUPPERDIR" ]; then cd "$PUPPERDIR"
+	find . -type d -exec mkdir -p "/{}" \;
+	find . \( -type f -o -type l \) -exec mv -f "{}" /"{}" \; 2> /dev/null
+	cd /
+fi
+sync
+rm -rf "$PWORKDIR"
+}
+
+mount_overlay() {
+mkdir -p "$PUPPERDIR" "$PWORKDIR"
+unmount_overlay
+for DIR in etc opt usr; do
+	LOWERDIR=""
+	for MOD in `ls "$PIMGSDIR"`; do
+		[ -d "$PIMGSDIR/$MOD/$DIR" ] || continue
+		LOWERDIR="$PIMGSDIR/$MOD/$DIR"':'"$LOWERDIR"
+	done
+	[ -n "$LOWERDIR" ] || continue
+	LOWERDIR="$LOWERDIR""/$DIR"
+	UPPERDIR="$PUPPERDIR/$DIR"
+	WORKDIR="$PWORKDIR/$DIR"
+	mkdir -p "$UPPERDIR" "$WORKDIR"
+	if [ "$DIR" = "usr" ]; then
+		mkdir -p "$PMPCHNDIR/$DIR"
+		mount -t overlay -o lowerdir=$LOWERDIR,upperdir=$UPPERDIR,workdir=$WORKDIR pmp-"$DIR" "$PMPCHNDIR/$DIR" || return $?
+		mount_usr_binds
+	else
+		mount -t overlay -o lowerdir=$LOWERDIR,upperdir=$UPPERDIR,workdir=$WORKDIR pmp-"$DIR" "/$DIR" || return $?
+	fi
+done
+}
+
+create_new_dir_bind() {
+local REL_DIR="$1"
+local ITEM
+local SUB_REL
+for ITEM in "$PIMGSDIR/$MOD/$REL_DIR"/* "$PIMGSDIR/$MOD/$REL_DIR"/.*
+do SUB_REL="$REL_DIR/${ITEM##*/}"
+	# skip empty
+	case "${ITEM##*/}" in .|..|'*'|'.*') continue ;; esac
+	[ -e "$ITEM" ] || [ -L "$ITEM" ] || continue
+
+	# item is a link - create pmp.newlink
+	if [ -L "$ITEM" ]; then
+		if [ ! -e "/$SUB_REL" ] && [ ! -L "/$SUB_REL" ]; then
+			echo "/$SUB_REL" >> "$PMPCHNDIR"/pmp.newlink
+		fi
+		continue
+	fi
+
+	# item is a file
+	if [ ! -d "$ITEM" ]; then
+		if [ ! -e "/$SUB_REL" ] && [ -d "$(dirname "/$SUB_REL")" ]; then
+			# file not exist - create pmp.file.bind
+			echo "/$SUB_REL" >> "$PMPCHNDIR"/pmp.file.bind
+		elif [ -d "$(dirname "/$SUB_REL")" ]; then
+			# file exist - create pmp.overfile.bind
+			echo "/$SUB_REL" >> "$PMPCHNDIR"/pmp.overfile.bind
+		fi
+		continue
+	fi
+
+	# item is a dir
+	if [ -d "/$SUB_REL" ]; then
+		# dir exist and it is empty - create pmp.dir.bind
+		if [ -z "$(ls -A -- "/$SUB_REL" 2>/dev/null)" ]; then
+			echo "/$SUB_REL" >> "$PMPCHNDIR"/pmp.dir.bind
+		else
+			# dir exist and it is not empty
+			create_new_dir_bind "$SUB_REL"
+		fi
+	else
+		# create pmp.newdir.bind
+		echo "/$SUB_REL" >> "$PMPCHNDIR"/pmp.newdir.bind
+	fi
+done
+}
+
+mount_usr_binds() {
+for MOD in `ls "$PIMGSDIR"`; do
+	[ -d "$PIMGSDIR/$MOD/usr" ] || continue
+	create_new_dir_bind "usr"
+done
+
+for LST in pmp.dir.bind pmp.newdir.bind pmp.file.bind pmp.overfile.bind pmp.newlink
+do [ -f "$PMPCHNDIR/$LST" ] && sort -u -o "$PMPCHNDIR/$LST" "$PMPCHNDIR/$LST"
+done
+
+[ -f "$PMPCHNDIR"/pmp.dir.bind ] && while IFS= read -r DIR; do
+	mountpoint -q "$DIR" && continue
+	[ -e "$DIR" ] && [ ! -d "$DIR" ] && continue
+	mount --bind "$PMPCHNDIR/$DIR" "$DIR"
+done < "$PMPCHNDIR"/pmp.dir.bind
+
+[ -f "$PMPCHNDIR"/pmp.newdir.bind ] && while IFS= read -r DIR; do
+	mountpoint -q "$DIR" && continue
+	[ -e "$DIR" ] && [ ! -d "$DIR" ] && continue
+	mount --bind --mkdir "$PMPCHNDIR/$DIR" "$DIR"
+done < "$PMPCHNDIR"/pmp.newdir.bind
+
+[ -f "$PMPCHNDIR"/pmp.file.bind ] && while IFS= read -r FILE; do
+	mountpoint -q "$FILE" && continue
+	[ -e "$FILE" ] && [ ! -f "$FILE" ] && continue
+	touch "$FILE"
+	mount --bind "$PMPCHNDIR/$FILE" "$FILE"
+done < "$PMPCHNDIR"/pmp.file.bind
+
+[ -f "$PMPCHNDIR"/pmp.overfile.bind ] && while IFS= read -r FILE; do
+	mountpoint -q "$FILE" && continue
+	[ ! -f "$FILE" ] && continue
+	mount --bind "$PMPCHNDIR/$FILE" "$FILE"
+done < "$PMPCHNDIR"/pmp.overfile.bind
+
+[ -f "$PMPCHNDIR"/pmp.newlink ] && while IFS= read -r LINK; do
+	[ -e "$LINK" ] || [ -L "$LINK" ] && continue
+	cp -P "${PMPCHNDIR}${LINK}" "$LINK"
+done < "$PMPCHNDIR"/pmp.newlink
+}
+
+unplug_all() {
+sync
+unmount_overlay
+rm -rf "$PUPPERDIR"
+for MOD in $(ls "$PIMGSDIR" 2>/dev/null); do
+	mountpoint -q "$PIMGSDIR/$MOD" && umount -d "$PIMGSDIR/$MOD"
+	rmdir "$PIMGSDIR/$MOD"
+done
+}
+
+# Fix for 'mount -t overlay' with util-linux >=2.39
+export LIBMOUNT_FORCE_MOUNT2=always
+
+CHANGES="/mnt/live/memory/changes"
+PIMGSDIR="/mnt/live/memory/pimgs"
+PMPCHNDIR="$CHANGES"/pmp
+PUPPERDIR="$PMPCHNDIR"/upperdir
+PWORKDIR="$PMPCHNDIR"/workdir
+[ -d "$CHANGES"/filesystem ] && CHANGES="$CHANGES"/filesystem || CHANGES="$CHANGES"/upperdir
+
+if [ "$1" = unplug ]; then
+	unplug_all
+	exit
+fi
+
+until [ "$#" -eq 0 ]; do
+	[ -f "$1" ] && mount_squashfs "$1"
+	shift
+done
+
+[ -z "$(ls "$PIMGSDIR" 2>/dev/null)" ] && exit
+
+mount_overlay
